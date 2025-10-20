@@ -59,7 +59,7 @@ jobs:
             }
 
             const commentBody = `
-              ## 🛡️ Checkov IaC Scan Results
+              ## Checkov IaC Scan Results
 
               ${statusMessage}
 
