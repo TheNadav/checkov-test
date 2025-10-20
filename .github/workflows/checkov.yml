@@ -50,9 +50,12 @@ jobs:
 
             let checkovResults;
             try {
-              checkovResults = JSON.parse(fs.readFileSync('checkov-results.json', 'utf8'));
+              const fileContent = fs.readFileSync('checkov-results.json', 'utf8');
+              console.log('Raw Checkov JSON file content:', fileContent.substring(0, 500));
+              checkovResults = JSON.parse(fileContent);
+              console.log('Parsed Checkov results:', JSON.stringify(checkovResults, null, 2).substring(0, 1000));
             } catch (error) {
-              console.log('No Checkov results file found');
+              console.log('Error reading Checkov results:', error.message);
               return;
             }
 
@@ -65,16 +68,36 @@ jobs:
             let highCount = 0;
             let mediumCount = 0;
             let lowCount = 0;
+            let unknownCount = 0;
 
             const failedChecks = checkovResults.results?.failed_checks || [];
 
+            console.log(`Total failed checks: ${failedChecks.length}`);
+
             failedChecks.forEach(check => {
-              const severity = (check.check_class || '').toLowerCase();
-              if (severity.includes('critical')) criticalCount++;
-              else if (severity.includes('high')) highCount++;
-              else if (severity.includes('medium')) mediumCount++;
-              else if (severity.includes('low')) lowCount++;
+              const checkType = check.check_type || '';
+              const checkClass = check.check_class || '';
+              const severity = check.severity || '';
+
+              console.log(`Check: ${check.check_id}, Severity: ${severity}, Check Class: ${checkClass}`);
+
+              const severityLower = severity.toLowerCase();
+
+              if (severityLower === 'critical') {
+                criticalCount++;
+              } else if (severityLower === 'high') {
+                highCount++;
+              } else if (severityLower === 'medium') {
+                mediumCount++;
+              } else if (severityLower === 'low') {
+                lowCount++;
+              } else {
+                unknownCount++;
+                console.log(`Unknown severity for check ${check.check_id}: "${severity}"`);
+              }
             });
+
+            console.log(`Severity counts - Critical: ${criticalCount}, High: ${highCount}, Medium: ${mediumCount}, Low: ${lowCount}, Unknown: ${unknownCount}`);
 
             let comment = `## 🛡️ Checkov IaC Security Scan Results\n\n`;
             comment += `### Summary\n`;
@@ -90,42 +113,52 @@ jobs:
             comment += `| 🔴 Critical | ${criticalCount} |\n`;
             comment += `| 🟠 High | ${highCount} |\n`;
             comment += `| 🟡 Medium | ${mediumCount} |\n`;
-            comment += `| 🟢 Low | ${lowCount} |\n\n`;
+            comment += `| 🟢 Low | ${lowCount} |\n`;
+            if (unknownCount > 0) {
+              comment += `| ⚪ Unknown | ${unknownCount} |\n`;
+            }
+            comment += `\n`;
 
             if (criticalCount > 0 || highCount > 0) {
               comment += `### ⚠️ Critical & High Severity Issues\n\n`;
 
               const criticalAndHigh = failedChecks
                 .filter(check => {
-                  const severity = (check.check_class || '').toLowerCase();
-                  return severity.includes('critical') || severity.includes('high');
+                  const severity = (check.severity || '').toLowerCase();
+                  return severity === 'critical' || severity === 'high';
                 })
-                .slice(0, 10);
+                .slice(0, 15);
 
               criticalAndHigh.forEach(check => {
-                const severity = (check.check_class || '').toLowerCase().includes('critical') ? '🔴 CRITICAL' : '🟠 HIGH';
+                const severity = (check.severity || '').toLowerCase() === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
                 comment += `#### ${severity}: ${check.check_id}\n`;
                 comment += `**File:** \`${check.file_path}:${check.file_line_range?.[0] || 'N/A'}\`\n`;
                 comment += `**Resource:** \`${check.resource}\`\n`;
                 comment += `**Description:** ${check.check_name}\n`;
                 if (check.guideline) {
-                  comment += `**Remediation:** ${check.guideline}\n`;
+                  comment += `**Guideline:** ${check.guideline}\n`;
                 }
                 comment += `\n`;
               });
 
-              if (failedChecks.length > 10) {
-                comment += `\n_... and ${failedChecks.length - 10} more issues. Check the Security tab for full details._\n\n`;
+              const criticalHighCount = criticalCount + highCount;
+              if (criticalHighCount > 15) {
+                comment += `\n_... and ${criticalHighCount - 15} more critical/high severity issues. Check the Security tab for full details._\n\n`;
               }
+            }
+
+            if (mediumCount > 0 || lowCount > 0) {
+              comment += `### ℹ️ Medium & Low Severity Issues\n`;
+              comment += `Found ${mediumCount} medium and ${lowCount} low severity issues. These won't block the merge but should be reviewed.\n\n`;
             }
 
             if (criticalCount > 0 || highCount > 0) {
               comment += `\n---\n`;
-              comment += `❌ **Build Status:** FAILED - Critical or High severity issues found!\n`;
+              comment += `❌ **Build Status:** FAILED - ${criticalCount} Critical and ${highCount} High severity issues found!\n`;
               comment += `\n💡 **Next Steps:** Fix the critical and high severity issues above before merging.\n`;
             } else if (failed > 0) {
               comment += `\n---\n`;
-              comment += `⚠️ **Build Status:** PASSED with warnings - Only low/medium severity issues found.\n`;
+              comment += `⚠️ **Build Status:** PASSED with warnings - Only low/medium severity issues found (${mediumCount} medium, ${lowCount} low).\n`;
               comment += `\n💡 Consider fixing these issues to improve security posture.\n`;
             } else {
               comment += `\n---\n`;
