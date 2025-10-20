@@ -30,7 +30,7 @@ jobs:
           framework: terraform
           output_format: sarif,json
           output_file_path: results.sarif,results.json
-          fail-on: HIGH,CRITICAL
+          hard_fail_on: HIGH,CRITICAL
         continue-on-error: true
 
       - name: Upload SARIF to Security Tab
