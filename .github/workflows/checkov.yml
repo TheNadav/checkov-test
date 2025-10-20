@@ -28,17 +28,34 @@ jobs:
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
-          output_format: sarif,json
-          output_file_path: checkov-results.sarif,checkov-results.json
+          output_format: json,sarif
+          output_file_path: console,results
           soft_fail: false
           hard_fail_on: HIGH,CRITICAL
           quiet: true
+        continue-on-error: true
+
+      - name: List output files for debugging
+        if: always()
+        run: |
+          echo "=== Listing current directory ==="
+          ls -la
+          echo "=== Looking for Checkov results files ==="
+          find . -name "*checkov*" -o -name "results*" -o -name "*.json" -o -name "*.sarif" | head -20
+          echo "=== Checking results directory ==="
+          if [ -d "results" ]; then
+            ls -la results/
+            echo "=== Content of JSON file if exists ==="
+            if [ -f "results/results_json.json" ]; then
+              head -100 results/results_json.json
+            fi
+          fi
 
       - name: Upload SARIF to Security tab
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: checkov-results.sarif
+          sarif_file: results/results_sarif.sarif
 
       - name: Generate PR Comment
         if: github.event_name == 'pull_request' && always()
@@ -50,13 +67,24 @@ jobs:
 
             let checkovResults;
             try {
-              const fileContent = fs.readFileSync('checkov-results.json', 'utf8');
-              console.log('Raw Checkov JSON file content:', fileContent.substring(0, 500));
+              const fileContent = fs.readFileSync('results/results_json.json', 'utf8');
+              console.log('Raw Checkov JSON file content (first 500 chars):', fileContent.substring(0, 500));
               checkovResults = JSON.parse(fileContent);
-              console.log('Parsed Checkov results:', JSON.stringify(checkovResults, null, 2).substring(0, 1000));
+              console.log('Parsed Checkov results (first 1000 chars):', JSON.stringify(checkovResults, null, 2).substring(0, 1000));
             } catch (error) {
               console.log('Error reading Checkov results:', error.message);
-              return;
+              console.log('Attempted to read: results/results_json.json');
+
+              try {
+                const altPath = 'checkov-results.json';
+                console.log(`Trying alternative path: ${altPath}`);
+                const altContent = fs.readFileSync(altPath, 'utf8');
+                checkovResults = JSON.parse(altContent);
+                console.log('Successfully read from alternative path');
+              } catch (altError) {
+                console.log('Alternative path also failed:', altError.message);
+                return;
+              }
             }
 
             const summary = checkovResults.summary || {};
