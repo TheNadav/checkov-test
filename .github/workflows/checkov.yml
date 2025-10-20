@@ -23,14 +23,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Checkov with severity filtering
+      - name: Run Checkov
         id: checkov
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
           framework: terraform
           soft_fail: false
-          compact: true
           quiet: false
           output_format: cli,json,sarif
           output_file_path: console,checkov_results.json,checkov_results.sarif
