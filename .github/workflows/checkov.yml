@@ -30,8 +30,6 @@ jobs:
           framework: terraform
           output_format: sarif,json
           output_file_path: results.sarif,results.json
-          # This line tells the action to only return a failure exit code for
-          # findings with a severity of HIGH or CRITICAL.
           fail-on: HIGH,CRITICAL
         continue-on-error: true
 
@@ -52,40 +50,18 @@ jobs:
 
             const results = JSON.parse(fs.readFileSync('results.json', 'utf8'));
             const summary = results.summary;
-            const failedChecks = results.results?.failed_checks || [];
-
-            // Initialize severity counters
-            let critical = 0, high = 0, medium = 0, low = 0;
-            failedChecks.forEach(check => {
-              switch (check.severity) {
-                case 'CRITICAL': critical++; break;
-                case 'HIGH': high++; break;
-                case 'MEDIUM': medium++; break;
-                case 'LOW': low++; break;
-              }
-            });
 
             let statusMessage;
-            if (critical > 0 || high > 0) {
-              statusMessage = `❌ **Action Failed:** Found **${critical}** critical and **${high}** high severity issues.`;
-            } else if (summary.failed > 0) {
-              statusMessage = `⚠️ **Action Passed with warnings:** Found **${medium}** medium and **${low}** low severity issues.`;
+            if (summary.failed > 0) {
+              statusMessage = `⚠️ **Checkov found ${summary.failed} total issues.**`;
             } else {
-              statusMessage = `✅ **Action Passed:** No issues found.`;
+              statusMessage = `✅ **Checkov passed:** No issues found.`;
             }
 
             const commentBody = `
               ## 🛡️ Checkov IaC Scan Results
 
               ${statusMessage}
-
-              ### Findings by Severity
-              | Severity | Count |
-              |:---|:---:|
-              | 🔴 Critical | ${critical} |
-              | 🟠 High | ${high} |
-              | 🟡 Medium | ${medium} |
-              | 🔵 Low | ${low} |
 
               ### Overall Summary
               | Status | Count |
