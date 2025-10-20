@@ -127,14 +127,13 @@ resource "aws_rds_cluster" "public_cluster" {
 
 resource "aws_elasticache_replication_group" "public_redis" {
   replication_group_id       = "public-redis"
-  replication_group_description = "Public Redis cluster"
+  description               = "Public Redis cluster"
   node_type                  = "cache.t3.micro"
-  number_cache_clusters      = 2
+  num_cache_clusters         = 2
   port                       = 6379
 
   at_rest_encryption_enabled = false
   transit_encryption_enabled = false
-  auth_token_enabled         = false
 
   security_group_ids = [aws_security_group.completely_open.id]
 }
