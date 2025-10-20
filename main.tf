@@ -172,6 +172,7 @@ resource "aws_alb" "vulnerable_alb" {
 
   access_logs {
     enabled = false
+    bucket  = aws_s3_bucket.vulnerable_bucket.bucket
   }
 }
 
@@ -258,7 +259,6 @@ resource "aws_elasticache_cluster" "vulnerable_elasticache" {
 
   snapshot_retention_limit = 0
   transit_encryption_enabled = false
-  at_rest_encryption_enabled = false
 }
 
 resource "aws_kinesis_stream" "vulnerable_kinesis" {
@@ -502,7 +502,7 @@ resource "aws_transfer_server" "vulnerable_transfer" {
 }
 
 resource "aws_batch_compute_environment" "vulnerable_batch" {
-  compute_environment_name = "vulnerable-batch"
+  name = "vulnerable-batch"
   type                     = "MANAGED"
 
   compute_resources {
