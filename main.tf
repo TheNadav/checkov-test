@@ -9,6 +9,8 @@ terraform {
 
 provider "aws" {
   region = "us-east-1"
+  access_key = "AKIAIOSFODNN7EXAMPLE"
+  secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 }
 
 resource "aws_s3_bucket" "vulnerable_bucket" {
@@ -19,14 +21,9 @@ resource "random_id" "bucket_id" {
   byte_length = 8
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "bad_encryption" {
+resource "aws_s3_bucket_acl" "public_bucket_acl" {
   bucket = aws_s3_bucket.vulnerable_bucket.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
+  acl    = "public-read-write"
 }
 
 resource "aws_s3_bucket_public_access_block" "bad_public_access" {
@@ -73,6 +70,33 @@ resource "aws_security_group" "vulnerable_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
     description = "RDP from anywhere"
+  }
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all inbound traffic"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_default_security_group" "default_sg" {
+  vpc_id = aws_vpc.vulnerable_vpc.id
+
+  ingress {
+    protocol  = -1
+    self      = true
+    from_port = 0
+    to_port   = 0
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
