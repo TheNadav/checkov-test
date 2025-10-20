@@ -28,11 +28,12 @@ jobs:
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
-          output_format: json,sarif
-          output_file_path: console,results
+          framework: terraform
           soft_fail: false
           hard_fail_on: HIGH,CRITICAL
           quiet: true
+          output_format: cli,json,sarif
+          output_file_path: console,checkov_results.json,checkov_results.sarif
         continue-on-error: true
 
       - name: List output files for debugging
@@ -41,21 +42,24 @@ jobs:
           echo "=== Listing current directory ==="
           ls -la
           echo "=== Looking for Checkov results files ==="
-          find . -name "*checkov*" -o -name "results*" -o -name "*.json" -o -name "*.sarif" | head -20
-          echo "=== Checking results directory ==="
-          if [ -d "results" ]; then
-            ls -la results/
-            echo "=== Content of JSON file if exists ==="
-            if [ -f "results/results_json.json" ]; then
-              head -100 results/results_json.json
-            fi
+          find . -name "*checkov*" -o -name "*.json" -o -name "*.sarif" 2>/dev/null | head -20
+          echo "=== Checking for JSON file ==="
+          if [ -f "checkov_results.json" ]; then
+            echo "Found checkov_results.json"
+            head -100 checkov_results.json
+          else
+            echo "checkov_results.json not found"
+          fi
+          if [ -f "results.json" ]; then
+            echo "Found results.json"
+            head -100 results.json
           fi
 
       - name: Upload SARIF to Security tab
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results/results_sarif.sarif
+          sarif_file: checkov_results.sarif
 
       - name: Generate PR Comment
         if: github.event_name == 'pull_request' && always()
@@ -66,25 +70,33 @@ jobs:
             const fs = require('fs');
 
             let checkovResults;
-            try {
-              const fileContent = fs.readFileSync('results/results_json.json', 'utf8');
-              console.log('Raw Checkov JSON file content (first 500 chars):', fileContent.substring(0, 500));
-              checkovResults = JSON.parse(fileContent);
-              console.log('Parsed Checkov results (first 1000 chars):', JSON.stringify(checkovResults, null, 2).substring(0, 1000));
-            } catch (error) {
-              console.log('Error reading Checkov results:', error.message);
-              console.log('Attempted to read: results/results_json.json');
+            const possiblePaths = [
+              'checkov_results.json',
+              'results.json',
+              'checkov-results.json',
+              'results/results_json.json'
+            ];
 
+            let foundFile = false;
+            for (const path of possiblePaths) {
               try {
-                const altPath = 'checkov-results.json';
-                console.log(`Trying alternative path: ${altPath}`);
-                const altContent = fs.readFileSync(altPath, 'utf8');
-                checkovResults = JSON.parse(altContent);
-                console.log('Successfully read from alternative path');
-              } catch (altError) {
-                console.log('Alternative path also failed:', altError.message);
-                return;
+                console.log(`Attempting to read: ${path}`);
+                const fileContent = fs.readFileSync(path, 'utf8');
+                console.log(`Successfully read ${path} (${fileContent.length} bytes)`);
+                console.log('First 500 chars:', fileContent.substring(0, 500));
+                checkovResults = JSON.parse(fileContent);
+                console.log('Parsed JSON successfully');
+                console.log('Structure keys:', Object.keys(checkovResults));
+                foundFile = true;
+                break;
+              } catch (error) {
+                console.log(`Failed to read ${path}: ${error.message}`);
               }
+            }
+
+            if (!foundFile) {
+              console.log('Could not find Checkov JSON results file in any expected location');
+              return;
             }
 
             const summary = checkovResults.summary || {};
