@@ -114,14 +114,57 @@ jobs:
 
             console.log(`Total failed checks: ${failedChecks.length}`);
 
-            failedChecks.forEach(check => {
-              const checkType = check.check_type || '';
-              const checkClass = check.check_class || '';
-              const severity = check.severity || '';
+            if (failedChecks.length > 0) {
+              console.log('Sample check structure:', JSON.stringify(failedChecks[0], null, 2));
+            }
 
-              console.log(`Check: ${check.check_id}, Severity: ${severity}, Check Class: ${checkClass}`);
+            const severityMap = {
+              'CRITICAL': 'critical',
+              'HIGH': 'high',
+              'MEDIUM': 'medium',
+              'LOW': 'low',
+              'INFORMATIONAL': 'low',
+              'INFO': 'low'
+            };
 
-              const severityLower = severity.toLowerCase();
+            failedChecks.forEach((check, index) => {
+              if (index < 3) {
+                console.log(`Sample check ${index}:`, JSON.stringify({
+                  check_id: check.check_id,
+                  severity: check.severity,
+                  check_class: check.check_class,
+                  bc_check_id: check.bc_check_id,
+                  guideline: check.guideline ? 'present' : 'absent'
+                }, null, 2));
+              }
+
+              let severity = '';
+
+              if (check.severity) {
+                severity = check.severity;
+              } else if (check.check_class) {
+                const match = check.check_class.match(/(CRITICAL|HIGH|MEDIUM|LOW)/i);
+                if (match) {
+                  severity = match[1];
+                }
+              }
+
+              if (check.guideline) {
+                const guidelineMatch = check.guideline.match(/Severity:\s*(CRITICAL|HIGH|MEDIUM|LOW)/i);
+                if (guidelineMatch) {
+                  severity = guidelineMatch[1];
+                }
+              }
+
+              if (!severity && check.bc_check_id) {
+                severity = 'MEDIUM';
+              }
+
+              if (!severity) {
+                severity = 'LOW';
+              }
+
+              const severityLower = severityMap[severity.toUpperCase()] || severity.toLowerCase();
 
               if (severityLower === 'critical') {
                 criticalCount++;
@@ -133,8 +176,12 @@ jobs:
                 lowCount++;
               } else {
                 unknownCount++;
-                console.log(`Unknown severity for check ${check.check_id}: "${severity}"`);
+                if (index < 5) {
+                  console.log(`Unknown severity for check ${check.check_id}: "${severity}" (original: ${check.severity || 'none'})`);
+                }
               }
+
+              check.computed_severity = severityLower;
             });
 
             console.log(`Severity counts - Critical: ${criticalCount}, High: ${highCount}, Medium: ${mediumCount}, Low: ${lowCount}, Unknown: ${unknownCount}`);
@@ -164,19 +211,22 @@ jobs:
 
               const criticalAndHigh = failedChecks
                 .filter(check => {
-                  const severity = (check.severity || '').toLowerCase();
+                  const severity = check.computed_severity || '';
                   return severity === 'critical' || severity === 'high';
                 })
                 .slice(0, 15);
 
               criticalAndHigh.forEach(check => {
-                const severity = (check.severity || '').toLowerCase() === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
+                const severity = check.computed_severity === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
                 comment += `#### ${severity}: ${check.check_id}\n`;
                 comment += `**File:** \`${check.file_path}:${check.file_line_range?.[0] || 'N/A'}\`\n`;
                 comment += `**Resource:** \`${check.resource}\`\n`;
                 comment += `**Description:** ${check.check_name}\n`;
                 if (check.guideline) {
-                  comment += `**Guideline:** ${check.guideline}\n`;
+                  const shortGuideline = check.guideline.length > 200
+                    ? check.guideline.substring(0, 200) + '...'
+                    : check.guideline;
+                  comment += `**Guideline:** ${shortGuideline}\n`;
                 }
                 comment += `\n`;
               });
