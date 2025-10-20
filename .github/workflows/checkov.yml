@@ -30,11 +30,13 @@ jobs:
           directory: .
           framework: terraform
           soft_fail: false
-          hard_fail_on: HIGH,CRITICAL
-          quiet: true
+          compact: true
+          quiet: false
           output_format: cli,json,sarif
           output_file_path: console,checkov_results.json,checkov_results.sarif
         continue-on-error: true
+        env:
+          LOG_LEVEL: DEBUG
 
       - name: List output files for debugging
         if: always()
@@ -115,7 +117,19 @@ jobs:
             console.log(`Total failed checks: ${failedChecks.length}`);
 
             if (failedChecks.length > 0) {
-              console.log('Sample check structure:', JSON.stringify(failedChecks[0], null, 2));
+              console.log('=== FULL SAMPLE CHECK STRUCTURE ===');
+              console.log(JSON.stringify(failedChecks[0], null, 2));
+              console.log('=== CHECKING FOR SEVERITY FIELDS ===');
+              console.log('check.severity:', failedChecks[0].severity);
+              console.log('check.check_class:', failedChecks[0].check_class);
+              console.log('Available fields:', Object.keys(failedChecks[0]));
+
+              console.log('\n=== FIRST 5 CHECKS ===');
+              for (let i = 0; i < Math.min(5, failedChecks.length); i++) {
+                console.log(`Check ${i}: ${failedChecks[i].check_id}`);
+                console.log(`  - severity field: ${failedChecks[i].severity || 'NOT PRESENT'}`);
+                console.log(`  - check_class field: ${failedChecks[i].check_class || 'NOT PRESENT'}`);
+              }
             }
 
             const severityMap = {
@@ -126,6 +140,61 @@ jobs:
               'INFORMATIONAL': 'low',
               'INFO': 'low'
             };
+
+            const criticalChecks = [
+              'CKV_AWS_41',  // AWS IAM policies with full administrative privileges
+              'CKV_AWS_62',  // S3 bucket with public read/write access
+              'CKV_AWS_70',  // S3 bucket allows public ACLs
+              'CKV_SECRET_6', // Hardcoded AWS Access Key
+              'CKV_SECRET_2', // AWS Secret Key
+              'CKV2_AWS_6',  // S3 bucket with public access
+              'CKV_AWS_20',  // S3 bucket with public access via bucket policy
+              'CKV_AWS_21',  // S3 bucket versioning disabled (data loss risk)
+              'CKV_AWS_93',  // S3 bucket allows public read access
+              'CKV2_AWS_5',  // Security group allows all traffic
+              'CKV2_AWS_12', // Default security group allows all traffic
+              'CKV_AWS_277', // IAM policy allows full "*:*" access
+              'CKV_AWS_63',  // IAM policies attached to users
+            ];
+
+            const highChecks = [
+              'CKV_AWS_23',  // Security group ingress open to 0.0.0.0/0
+              'CKV_AWS_24',  // Security group egress open to 0.0.0.0/0
+              'CKV_AWS_25',  // Security group SSH from 0.0.0.0/0
+              'CKV_AWS_46',  // EC2 user data contains secrets
+              'CKV_AWS_79',  // EC2 instance metadata v1 enabled
+              'CKV_AWS_8',   // RDS database not encrypted
+              'CKV_AWS_17',  // RDS publicly accessible
+              'CKV_AWS_118', // RDS instance without enhanced monitoring
+              'CKV_AWS_16',  // RDS without backup retention
+              'CKV_AWS_3',   // EBS volume not encrypted
+              'CKV_AWS_131', // ALB drops invalid HTTP headers disabled
+              'CKV2_AWS_28', // ECS task definition elevated privileges
+              'CKV_AWS_111', // IAM policy allows write without constraints
+              'CKV_AWS_108', // IAM policy allows privilege escalation
+              'CKV_AWS_49',  // IAM policy allows data exfiltration
+              'CKV_AWS_158', // CloudWatch log group not encrypted
+              'CKV_AWS_19',  // S3 bucket encryption disabled
+              'CKV_AWS_58',  // EKS public endpoint accessible
+              'CKV_AWS_39',  // ECR repository not encrypted
+              'CKV_AWS_51',  // ECR image scanning disabled
+              'CKV_AWS_136', // ECR repository policy allows public access
+              'CKV_AWS_5',   // Elasticsearch not encrypted at rest
+              'CKV_AWS_84',  // Elasticsearch publicly accessible
+              'CKV2_AWS_1',  // EFS not encrypted
+              'CKV_AWS_42',  // EFS encryption disabled
+              'CKV_AWS_27',  // SQS queue not encrypted
+              'CKV_AWS_26',  // SNS topic not encrypted
+              'CKV_AWS_18',  // RDS storage not encrypted
+              'CKV_AWS_129', // DynamoDB table not encrypted
+              'CKV_AWS_119', // DynamoDB point-in-time recovery disabled
+              'CKV_AWS_7',   // KMS key rotation disabled
+              'CKV2_AWS_38', // EKS cluster encryption disabled
+              'CKV_AWS_57',  // EKS cluster logging disabled
+              'CKV_AWS_37',  // EKS endpoint access public
+              'CKV_AWS_38',  // EKS secrets encryption disabled
+              'CKV_AWS_161', // RDS DB instance IAM authentication disabled
+            ];
 
             failedChecks.forEach((check, index) => {
               if (index < 3) {
@@ -140,7 +209,11 @@ jobs:
 
               let severity = '';
 
-              if (check.severity) {
+              if (criticalChecks.includes(check.check_id)) {
+                severity = 'CRITICAL';
+              } else if (highChecks.includes(check.check_id)) {
+                severity = 'HIGH';
+              } else if (check.severity) {
                 severity = check.severity;
               } else if (check.check_class) {
                 const match = check.check_class.match(/(CRITICAL|HIGH|MEDIUM|LOW)/i);
@@ -149,7 +222,7 @@ jobs:
                 }
               }
 
-              if (check.guideline) {
+              if (!severity && check.guideline) {
                 const guidelineMatch = check.guideline.match(/Severity:\s*(CRITICAL|HIGH|MEDIUM|LOW)/i);
                 if (guidelineMatch) {
                   severity = guidelineMatch[1];
@@ -161,7 +234,7 @@ jobs:
               }
 
               if (!severity) {
-                severity = 'LOW';
+                severity = 'MEDIUM';
               }
 
               const severityLower = severityMap[severity.toUpperCase()] || severity.toLowerCase();
